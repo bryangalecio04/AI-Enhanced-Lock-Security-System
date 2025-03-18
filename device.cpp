@@ -56,14 +56,14 @@ byte columnPins[columns] = {2,3,4};
 Keypad keypad = Keypad(makeKeymap(keys), rowPins, columnPins, rows, columns);
 
 void savePasswordToEEPROM(const char* newPassword){
-  for (int i = 0; i < maxPasswordLength; i++){
+  for(int i = 0; i < maxPasswordLength; i++){
     EEPROM.write(i, newPassword[i]); // Save each character in EEPROM
   }
   EEPROM.write(maxPasswordLength, STRING_TERMINATOR); // Add null terminator
 }
 
 void loadPasswordFromEEPROM(char* passwordBuffer){
-  for (int i = 0; i < maxPasswordLength; i++){
+  for(int i = 0; i < maxPasswordLength; i++){
     passwordBuffer[i] = EEPROM.read(i); // Load each character from EEPROM
     if(passwordBuffer[i] == STRING_TERMINATOR){
       return;
