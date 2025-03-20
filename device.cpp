@@ -14,9 +14,7 @@ class Password{
       if(guess == password){
         return true;
       }
-      else{
-        return false;
-      }
+      return false;
     }
     void newPassword(const String &newPassword){
       password = newPassword;
