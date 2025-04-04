@@ -38,8 +38,6 @@ String identification = "";
 int currentPasswordLength = 0;
 const int maxPasswordLength = 6;
 int a = 5;
-int attempts = 0;
-int attemptsLeft = 2;
 bool isFaceIDLocked = false;
 
 const byte rows = 4;
@@ -347,6 +345,8 @@ void changePassword(char key){
 
 void confirmIdentity(){
   clearBuffer();
+  static int attempts = 0;
+  static int attemptsLeft = 2;
   unsigned long startTime = millis();
   while(millis() - startTime < 10000){
     lcd.setCursor(0,0);
