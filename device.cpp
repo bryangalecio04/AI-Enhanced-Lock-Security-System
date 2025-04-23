@@ -1,141 +1,439 @@
 #include <Arduino.h>
-#include <MPU6050_6Axis_MotionApps20.h>
+#include <Keypad.h>
 #include <LiquidCrystal_I2C.h>
 #include <Servo.h>
+#include <EEPROM.h>
 
-#define echo 2
-#define trig 3
-#define buzzer 4
-#define yaw 5
-#define pitch1 6
-#define pitch2 7
-#define roll 8
-#define Laser 34
+// Password class for storing, evaluating, and changing password
+class Password{
+  public:
+    Password(const String &__init__){
+      password = __init__;
+    }
+    bool evaluate(const String &guess){
+      if(guess == password){
+        return true;
+      }
+      return false;
+    }
+    void newPassword(const String &newPassword){
+      password = newPassword;
+    }
+  private:
+    String password;
+};
 
-LiquidCrystal_I2C lcd(0x27, 16, 2); // SDA(A4) SCL(A5)
-MPU6050 mpu;
-Servo servoYaw;
-Servo servoPitch1;
-Servo servoPitch2;
-Servo servoRoll;
+Password password("012345"); // Default Password
 
-bool DMPReady = false;
-uint8_t status; // return status after each device operation (0 = success)
-uint8_t FIFOBuffer[64];
-Quaternion q; // [w, x, y, z] quaternion container
-VectorFloat gravity; // [x, y, z] gravity vector
-float ypr[3]; // [yaw, pitch, roll] in radians
+#define STRING_TERMINATOR '\0'
+#define servo_motor 10
+#define BUZZER 11
+#define GREEN 12
+#define RED 13
+LiquidCrystal_I2C lcd(0x27, 16, 2); // SDA(A4) SCL(A5) 
+Servo servo;
 
-void setup() {
-  Serial.begin(9600);
-  
-  pinMode(trig, OUTPUT);
-  pinMode(echo, INPUT);
-  pinMode(buzzer, OUTPUT);
+String target = "";
+String identification = "";
+int currentPasswordLength = 0;
+const int maxPasswordLength = 6;
+int a = 5;
+bool isFaceIDLocked = false;
 
-  lcd.init();
-  lcd.backlight();
+const byte rows = 4;
+const byte columns = 3;
+char keys[rows][columns] =
+{{'1', '2', '3'},
+{'4', '5', '6'},
+{'7', '8', '9'},
+{'*', '0', '#'}};
+byte rowPins[rows] = {5,6,7,8};
+byte columnPins[columns] = {2,3,4};
+Keypad keypad = Keypad(makeKeymap(keys), rowPins, columnPins, rows, columns);
 
-  servoYaw.attach(yaw);
-  servoPitch1.attach(pitch1);
-  servoPitch2.attach(pitch2);
-  servoRoll.attach(roll);
-  servoYaw.write(90);
-  servoPitch1.write(90);
-  servoPitch2.write(90);
-  servoRoll.write(90);
-
-  mpu.initialize();
-  status = mpu.dmpInitialize();
-
-  mpu.setXGyroOffset(0);  //Set your gyro offset for axis X
-  mpu.setYGyroOffset(0);  //Set your gyro offset for axis Y
-  mpu.setZGyroOffset(0);  //Set your gyro offset for axis Z
-  mpu.setXAccelOffset(0); //Set your accelerometer offset for axis X
-  mpu.setYAccelOffset(0); //Set your accelerometer offset for axis Y
-  mpu.setZAccelOffset(0); //Set your accelerometer offset for axis Z
-
-  if(mpu.testConnection() && status == 0) {
-    Serial.println("MPU6050 and DMP connection successful");
-    mpu.CalibrateGyro(6);
-    mpu.CalibrateAccel(6);
-    mpu.setDMPEnabled(true);
-    DMPReady = true;
+void savePasswordToEEPROM(const char* newPassword){
+  for(int i = 0; i < maxPasswordLength; i++){
+    EEPROM.write(i, newPassword[i]); // Save each character in EEPROM
   }
-  else {
-    Serial.println("MPU6050 and DMP onnection failed");
-  }
+  EEPROM.write(maxPasswordLength, STRING_TERMINATOR); // Add null terminator
 }
 
-void buzzer_on() {
-  digitalWrite(buzzer, HIGH);
-  delay(200);
-  digitalWrite(buzzer, LOW);
-  delay(200);
-}
-
-void ultra_sonic_sensor() {
-  long duration, distance;
-
-  digitalWrite(trig, LOW);
-  delayMicroseconds(2);
-  digitalWrite(trig, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(trig, LOW);
-
-  // Read the echoPin, which returns the sound wave travel time in microseconds
-  duration = pulseIn(echo, HIGH); // pulseIn() returns in microseconds
-  distance = (duration * 0.034)/ 2; // (duration (microseconds) * speed of sound (10^-4 m/s)) / 2 computes distance in cm
-  lcd.setCursor(0, 0);
-  lcd.print("Distance: " + String(distance) + " cm");
-  Serial.println("Distance: " + String(distance) + " cm");
-  if(distance < 25) { // If the distance is less than 25 cm, an object is detected
-    buzzer_on();
+void loadPasswordFromEEPROM(char* passwordBuffer){
+  for(int i = 0; i < maxPasswordLength; i++){
+    passwordBuffer[i] = EEPROM.read(i); // Load each character from EEPROM
+    if(passwordBuffer[i] == STRING_TERMINATOR){
+      return;
+    }
   }
 }
 
-void aircraftStabilizer() {
-  static int lastYaw = 90;
-  static int lastPitch1 = 90;
-  static int lastPitch2 = 90;
-  static int lastRoll = 90;
+// Initialize buzzer, LEDs, LCD, serial port, motor, and password
+void setup(){
+pinMode(BUZZER, OUTPUT);
+pinMode(GREEN, OUTPUT);
+pinMode(RED, OUTPUT);
 
-  mpu.dmpGetQuaternion(&q, FIFOBuffer); // Extract quaternion from FIFO buffer (orientation data from DMP)
-  mpu.dmpGetGravity(&gravity, &q); // Calculate gravity vector from quaternion
-  mpu.dmpGetYawPitchRoll(ypr, &q, &gravity); // Calculate yaw, pitch, and roll angles in radians from quaternion and gravity vector
-  float yawDegree = ypr[0] * 180/M_PI;
-  float pitchDegree = ypr[1] * 180/M_PI;
-  float rollDegree = ypr[2] * 180/M_PI;
-  Serial.println("ypr: " + String(yawDegree) + " " + String(pitchDegree) + " " + String(rollDegree));
+lcd.init();
+lcd.backlight();
+lcd.setCursor(5, 0);
+lcd.print("Hello");
+lcd.setCursor(5, 1);
+lcd.print("Team!");
+delay(3000);
+lcd.clear();
 
-  int targetYaw = (yawDegree < -10  || yawDegree > 10) ? (90 + yawDegree) : 90;
-  if(targetYaw != lastYaw) {
-    servoYaw.write(targetYaw);
+servo.attach(servo_motor);
+servo.write(0);
+
+char storedPassword[maxPasswordLength];
+loadPasswordFromEEPROM(storedPassword);
+
+if(storedPassword[0] == 0xFF || storedPassword[0] == STRING_TERMINATOR){
+  savePasswordToEEPROM("012345");
+}
+else{
+  password = Password(storedPassword);
+}
+
+Serial.begin(9600);
+Serial.println(storedPassword);
+}
+
+void clear(){
+  target = "";
+  currentPasswordLength = 0;
+  a = 5;
+  lcd.clear();
+}
+
+void clearBuffer(){
+  while(Serial.available() > 0){
+    Serial.read();
+  }
+}
+
+void lcdReset(){clear(); lcd.setCursor(0,0);}
+
+// States of the device
+enum State{enteringPassword, open, confirmingOldPassword, changingPassword, faceIdentification};
+State currState = enteringPassword;
+
+void openToChangePassword(){
+  clear();
+  lcd.setCursor(2,0);
+  lcd.print("OPEN SAFE TO");
+  lcd.setCursor(0,1);
+  lcd.print("CHANGE PASSWORD!");
+  delay(3000);
+  clear();
+}
+
+void wrongPassword(){
+  lcdReset();
+  lcd.print("WRONG PASSWORD!");
+  lcd.setCursor(0, 1);
+  lcd.print("PLEASE TRY AGAIN");
+  for(int i = 0; i < 5; i++){
+    digitalWrite(BUZZER, HIGH); digitalWrite(RED, HIGH);
     delay(200);
-    lastYaw = targetYaw;
-  }
-
-  int targetPitch1 = (pitchDegree < -10  || pitchDegree > 10) ? (90 + pitchDegree) : 90;
-  int targetPitch2 = (pitchDegree < -10  || pitchDegree > 10) ? (90 - pitchDegree) : 90;
-  if(targetPitch1 != lastPitch1 && targetPitch2 != lastPitch2) {
-    servoPitch1.write(targetPitch1);
-    servoPitch2.write(targetPitch2);
+    digitalWrite(BUZZER, LOW); digitalWrite(RED, LOW);
     delay(200);
-    lastPitch1 = targetPitch1;
-    lastPitch2 = targetPitch2;
   }
+  delay(3000);
+  clear();
+}
 
-  int targetRoll = (rollDegree < -10  || rollDegree > 10) ? (90 - rollDegree) : 90;
-  if(targetRoll != lastRoll) {
-    servoRoll.write(targetRoll);
+void wrongFace(){
+  for(int i = 0; i < 5; i++){
+    digitalWrite(BUZZER, HIGH); digitalWrite(RED, HIGH);
     delay(200);
-    lastRoll = targetRoll;
+    digitalWrite(BUZZER, LOW); digitalWrite(RED, LOW);
+    delay(200);
   }
 }
 
-void loop() {
-  ultra_sonic_sensor();
-  if(DMPReady && mpu.dmpGetCurrentFIFOPacket(FIFOBuffer)) {
-    aircraftStabilizer();
+void faceIDLocked(){
+  lcdReset();
+  lcd.print("FACE ID LOCKED");
+  lcd.setCursor(0,1);
+  lcd.print("ENTER PASSWORD");
+  delay(3000);
+  clear();
+}
+
+void openSafe(){
+  digitalWrite(BUZZER, HIGH); digitalWrite(GREEN, HIGH);
+  delay(300);
+  digitalWrite(BUZZER, LOW); digitalWrite(GREEN, LOW);
+  servo.write(180);
+  delay(300);
+  delay(3000);
+  clear();
+}
+
+void lockSafe(){
+  lcdReset();
+  lcd.print("SAFE LOCKED");
+  digitalWrite(BUZZER, HIGH); digitalWrite(GREEN, HIGH);
+  delay(300);
+  digitalWrite(BUZZER, LOW); digitalWrite(GREEN, LOW);
+  servo.write(0);
+  delay(300);
+  delay(3000);
+  clear();
+}
+
+void processKey(char key){
+  if(key == '*' || key == '#'){
+    return;
+  }
+  lcd.setCursor(a, 1);
+  lcd.print("*");
+  target += key;
+  currentPasswordLength++;
+  a++;
+  if(currentPasswordLength > maxPasswordLength){
+    lcdReset();
+    lcd.print("MAX 6 CHARACTERS");
+    delay(3000);
+    clear();
+  }
+}
+
+void enterPassword(char key){
+  lcd.setCursor(1, 0);
+  lcd.print("ENTER PASSWORD");
+  static char lastKey = NO_KEY;
+  if(key != NO_KEY){
+    if(lastKey == '*' && key == '*'){
+      lastKey = NO_KEY;
+      clear();
+    }
+    else if(lastKey == '*' && key == '#'){
+      lastKey = NO_KEY;
+      openToChangePassword();
+    }
+    else if(lastKey == '*' && key == '0' && !isFaceIDLocked){
+      lastKey = NO_KEY;
+      clear();
+      currState = faceIdentification;
+    }
+    else if(lastKey == '*' && key == '0' && isFaceIDLocked){
+      faceIDLocked();
+    }
+    else if(key == '#'){
+      if(password.evaluate(target)){
+        isFaceIDLocked = false;
+        lcdReset();
+        lcd.print("CORRECT PASSWORD");
+        lcd.setCursor(0, 1);
+        lcd.print("SAFE OPENED");
+        openSafe();
+        currState = open;
+      }
+      else{
+        wrongPassword();
+      }
+      lastKey = NO_KEY;
+    }
+    else{
+      processKey(key);
+    }
+    lastKey = key;
+  }
+}
+
+void safeOpened(char key){
+  lcd.setCursor(4,0);
+  lcd.print("PRESS #");
+  lcd.setCursor(4,1);
+  lcd.print("TO LOCK");
+  static char lastKey = NO_KEY;
+  if(key != NO_KEY){
+    if(lastKey == '*' && key == '#'){
+      lastKey = NO_KEY;
+      clear();
+      currState = confirmingOldPassword;
+    }
+    else if(lastKey != '*' && key == '#'){
+      lastKey = NO_KEY;
+      lockSafe();
+      currState = enteringPassword;
+    }
+    lastKey = key;
+  }
+}
+
+void confirmPassword(char key){
+  lcd.setCursor(1,0);
+  lcd.print("ENTER OLD PASS");
+  static char lastKey = NO_KEY;
+  if(key != NO_KEY){
+    if((lastKey == '*') && (key == '*')){
+      lastKey = NO_KEY;
+      clear();
+    }
+    else if((lastKey == '*') && (key == '#')){
+      lastKey = NO_KEY;
+      clear();
+      currState = open;
+    }
+    else if((lastKey != '*') && (key == '#')){
+      if(password.evaluate(target)){
+        digitalWrite(BUZZER, HIGH); digitalWrite(GREEN, HIGH);
+        delay(300);
+        digitalWrite(BUZZER, LOW); digitalWrite(GREEN, LOW);
+        delay(300);
+        clear();
+        currState = changingPassword;
+      }
+      else{
+        wrongPassword();
+      }
+      lastKey = NO_KEY;
+    }
+    else{
+      processKey(key);
+    }
+    lastKey = key;
+  }
+}
+
+void changePassword(char key){
+  lcd.setCursor(1, 0);
+  lcd.print("ENTER NEW PASS");
+  static char lastKey = NO_KEY;
+  if(key != NO_KEY){
+    if((lastKey == '*') && (key == '*')){
+      lastKey = NO_KEY;
+      clear();
+    }
+    else if((lastKey == '*') && (key == '#')){
+      lastKey = NO_KEY;
+      clear();
+      currState = open;
+    }
+    else if((lastKey != '*') && (key == '#')){
+      if(target.length() < 4){
+        lcdReset();
+        lcd.print("MIN 4 CHARACTERS");
+        delay(3000);
+        clear();
+      }
+      else if(target.length() >= 4){
+        password.newPassword(target);
+        char newPassword[maxPasswordLength];
+        strcpy(newPassword, target.c_str());
+        savePasswordToEEPROM(newPassword);
+        lcdReset();
+        lcd.print("PASSWORD UPDATED");
+        digitalWrite(BUZZER, HIGH); digitalWrite(GREEN, HIGH);
+        delay(300);
+        digitalWrite(BUZZER, LOW); digitalWrite(GREEN, LOW);
+        delay(300);
+        delay(3000);
+        clear();
+        currState = open;
+      }
+    }
+    else{
+      processKey(key);
+    }
+    lastKey = key;
+  }
+}
+
+void confirmIdentity(){
+  clearBuffer();
+  static int attempts = 0;
+  static int attemptsLeft = 2;
+  unsigned long startTime = millis();
+  while(millis() - startTime < 10000){
+    lcd.setCursor(0,0);
+    lcd.print("SCANNING FACE...");
+    if(Serial.available() > 0){
+      identification = Serial.readStringUntil('\n');
+      if(identification == "IDENTIFIED"){
+        lcdReset();
+        lcd.print("FACE IDENTIFIED");
+        lcd.setCursor(0,1);
+        lcd.print("SAFE OPENED");
+        openSafe();
+        clearBuffer();
+        identification = "";
+        attempts = 0;
+        attemptsLeft = 2;
+        clear();
+        currState = open;
+        return;
+      }
+      else if(identification == "Unknown"){
+        attempts ++;
+        attemptsLeft --;
+        if(attempts >= 2){
+          attempts = 0;
+          attemptsLeft = 2;
+          isFaceIDLocked = true;
+          faceIDLocked();
+          currState = enteringPassword;
+          return;
+        }
+        lcdReset();
+        lcd.print("TRY AGAIN");
+        lcd.setCursor(0,1);
+        lcd.print("ATTEMPTS LEFT:");
+        lcd.setCursor(15,1);
+        lcd.print(attemptsLeft);
+        wrongFace();
+        delay(3000);
+        clearBuffer();
+        identification = "";
+        clear();
+        currState = enteringPassword;
+        return;
+      }
+    }
+  }
+  attempts ++;
+  attemptsLeft --;
+  if(attempts >= 2){
+    attempts = 0;
+    attemptsLeft = 2;
+    isFaceIDLocked = true;
+    faceIDLocked();
+    currState = enteringPassword;
+    return;
+  }
+  lcdReset();
+  lcd.print("TIMED OUT");
+  lcd.setCursor(0,1);
+  lcd.print("ATTEMPTS LEFT:");
+  lcd.setCursor(15,1);
+  lcd.print(attemptsLeft);
+  wrongFace();
+  delay(3000);
+  clear();
+  currState = enteringPassword;
+}
+
+// Checking state of the device
+void loop(){
+  char key = keypad.getKey();
+  switch(currState){
+    case enteringPassword:
+      enterPassword(key);
+      break;
+    case open:
+      safeOpened(key);
+      break;
+    case confirmingOldPassword:
+      confirmPassword(key);
+      break;
+    case changingPassword:
+      changePassword(key);
+      break;
+    case faceIdentification:
+      confirmIdentity();
+      break;
   }
 }
