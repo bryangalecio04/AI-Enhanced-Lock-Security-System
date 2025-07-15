@@ -1,10 +1,10 @@
-import face_recognition
 import cv2
+import face_recognition
 import numpy as np
 from picamera2 import Picamera2
-import time
-import serial
 import pickle
+import serial
+import time
 
 # Load pre-trained face encodings
 with open("face_encodings.pkl", "rb") as f:
