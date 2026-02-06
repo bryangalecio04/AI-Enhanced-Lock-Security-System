@@ -101,6 +101,7 @@ Serial.println(storedPassword);
 
 void clear(){
   target = "";
+  identification = "";
   currentPasswordLength = 0;
   a = 5;
   lcd.clear();
@@ -128,28 +129,23 @@ void openToChangePassword(){
   clear();
 }
 
+void warningSignal(){
+  for(int i = 0; i < 5; i++){
+    digitalWrite(BUZZER, HIGH); digitalWrite(RED, HIGH);
+    delay(200);
+    digitalWrite(BUZZER, LOW); digitalWrite(RED, LOW);
+    delay(200);
+  }
+}
+
 void wrongPassword(){
   lcdReset();
   lcd.print("WRONG PASSWORD!");
   lcd.setCursor(0, 1);
   lcd.print("PLEASE TRY AGAIN");
-  for(int i = 0; i < 5; i++){
-    digitalWrite(BUZZER, HIGH); digitalWrite(RED, HIGH);
-    delay(200);
-    digitalWrite(BUZZER, LOW); digitalWrite(RED, LOW);
-    delay(200);
-  }
-  delay(3000);
+  warningSignal();
+  delay(1000);
   clear();
-}
-
-void wrongFace(){
-  for(int i = 0; i < 5; i++){
-    digitalWrite(BUZZER, HIGH); digitalWrite(RED, HIGH);
-    delay(200);
-    digitalWrite(BUZZER, LOW); digitalWrite(RED, LOW);
-    delay(200);
-  }
 }
 
 void faceIDLocked(){
@@ -166,8 +162,7 @@ void openSafe(){
   delay(300);
   digitalWrite(BUZZER, LOW); digitalWrite(GREEN, LOW);
   servo.write(180);
-  delay(300);
-  delay(3000);
+  delay(2700);
   clear();
 }
 
@@ -178,8 +173,7 @@ void lockSafe(){
   delay(300);
   digitalWrite(BUZZER, LOW); digitalWrite(GREEN, LOW);
   servo.write(0);
-  delay(300);
-  delay(3000);
+  delay(2700);
   clear();
 }
 
@@ -330,8 +324,7 @@ void changePassword(char key){
         digitalWrite(BUZZER, HIGH); digitalWrite(GREEN, HIGH);
         delay(300);
         digitalWrite(BUZZER, LOW); digitalWrite(GREEN, LOW);
-        delay(300);
-        delay(3000);
+        delay(2700);
         clear();
         currState = open;
       }
@@ -358,11 +351,10 @@ void confirmIdentity(){
         lcd.print("FACE IDENTIFIED");
         lcd.setCursor(0,1);
         lcd.print("SAFE OPENED");
-        openSafe();
-        clearBuffer();
-        identification = "";
         attempts = 0;
         attemptsLeft = 2;
+        openSafe();
+        clearBuffer();
         clear();
         currState = open;
         return;
@@ -384,10 +376,9 @@ void confirmIdentity(){
         lcd.print("ATTEMPTS LEFT:");
         lcd.setCursor(15,1);
         lcd.print(attemptsLeft);
-        wrongFace();
-        delay(3000);
+        warningSignal();
+        delay(1000);
         clearBuffer();
-        identification = "";
         clear();
         currState = enteringPassword;
         return;
@@ -410,8 +401,8 @@ void confirmIdentity(){
   lcd.print("ATTEMPTS LEFT:");
   lcd.setCursor(15,1);
   lcd.print(attemptsLeft);
-  wrongFace();
-  delay(3000);
+  warningSignal();
+  delay(1000);
   clear();
   currState = enteringPassword;
 }

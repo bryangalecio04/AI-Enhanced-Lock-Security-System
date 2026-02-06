@@ -25,9 +25,6 @@ def capture_photos(name):
     picam2.configure(picam2.create_preview_configuration(main={"format": 'XRGB8888', "size": (640, 480)}))
     picam2.start()
 
-    # Allow camera to warm up
-    time.sleep(2)
-
     photo_count = 0
 
     print(f"Taking photos for {name}. Press SPACE to capture, 'q' to quit.")
@@ -40,7 +37,6 @@ def capture_photos(name):
         cv2.imshow('Capture', frame)
 
         key = cv2.waitKey(1) & 0xFF
-
         if key == ord(' '):  # Space key
             photo_count += 1
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -49,7 +45,7 @@ def capture_photos(name):
             cv2.imwrite(filepath, frame)
             print(f"Photo {photo_count} saved: {filepath}")
 
-        elif key == ord('q'):  # Q key
+        elif key == ord('q'):
             break
 
     cv2.destroyAllWindows()

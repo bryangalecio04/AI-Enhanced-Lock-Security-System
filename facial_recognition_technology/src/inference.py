@@ -19,7 +19,7 @@ picam2.start()
 arduino = serial.Serial(port='/dev/ttyS0', baudrate=9600)
 
 # Initialize our variables
-cv_scaler = 10  # this has to be a whole number
+cv_scaler = 5  # this has to be a whole number
 face_locations = []
 face_encodings = []
 face_names = []
