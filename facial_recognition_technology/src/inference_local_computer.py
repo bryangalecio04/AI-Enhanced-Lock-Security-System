@@ -4,12 +4,14 @@ import numpy as np
 import time
 import pickle
 
+# Load pre-trained face encodings
 with open("face_encodings.pkl", "rb") as f:
     known_face_encodings, known_face_names = pickle.load(f)
 
+# Initialize the camera
 cam = cv2.VideoCapture(0)
 
-cv_scaler = 5
+cv_scaler = 5   # Scale factor for resizing frames
 face_loactions = []
 face_encodings = []
 face_names = []
@@ -28,6 +30,7 @@ def process_frame(frame):
     # Find all the faces and face encodings in the current frame
     face_locations = face_recognition.face_locations(rgb_resized_frame)
     face_encodings = face_recognition.face_encodings(rgb_resized_frame, face_locations, model='large')
+
     face_names = []
     authorized = False
 
