@@ -99,7 +99,7 @@ def calculate_fps():
     return fps
 
 while True:
-    ret, frame = cam.read()
+    frame = picam2.capture_array()
     processed_frame = process_frame(frame)
     display_frame = display(processed_frame)
     current_fps = calculate_fps()
